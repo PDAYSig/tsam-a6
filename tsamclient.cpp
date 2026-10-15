@@ -187,25 +187,25 @@ string getTimestamp() {
     return ss.str();
 }
 
-bool sendUsername(int sock, string userName){
+int sendUsername(int sock, string userName){
     if (userName.empty()){
-        return false;
+        return 0;
     }
 
     if(!sendMessage(sock, "USERNAME," + userName)){
-        return false;
+        return -1;
     }
     
     string response;
 
     if (!receiveResponse(sock, response)){
-        return false;
+        return -1;
     }
     if (response == "OK"){
-        return true;
+        return 1;
     }
 
-    return false;
+    return 0;
 }
 
 
@@ -248,12 +248,18 @@ int main(int argc, char* argv[]){
             close(serversock);
             return 0;
         }
-        
-        if (sendUsername(serversock, userName)){
+        int result = sendUsername(serversock, userName);
+
+        if (result == 1){
             break;
         }
+        else if (result == 0){
+            cout << "Invalid Username" << endl;
+        }
         else{
-            cout << "Invalid username" << endl;
+            cout << "Connecton to server lost" << endl;
+            close(serversock);
+            return 1;
         }
     }
     
