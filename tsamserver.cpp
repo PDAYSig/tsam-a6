@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <map>
 #include <chrono>
+#include <algorithm>
 
 
 using namespace std;
@@ -94,6 +95,8 @@ int open_socket(int port){
 
 
 void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vector<struct pollfd>& fds){ //map<int, Client*>* clients
+    printf("Client connected!\n");
+   
     while (true){               // While there is some client waiting to connect, accept that connection
         int client_sock = accept(listening_sock, (sockaddr*) &client,(socklen_t*) &client_len);
         if (client_sock < 0){
@@ -102,7 +105,7 @@ void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vect
             perror("Error connecting to client");
             exit(1);
         }
-        printf("Client connected!");
+        printf("Client connected!\n");
         //TODO: if no username, fuck you
         fds.push_back({client_sock, POLLIN, 0});
         Client new_client = Client(client_sock);
@@ -113,7 +116,7 @@ void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vect
 
 
 void remove_clients(Client* client){
-    printf("Disconnecting client");
+    printf("Disconnecting client\n");
     int client_socket = client->sock;
     close(client_socket);
 
@@ -142,6 +145,7 @@ command_input extract_command(char* message){
     } else if (command.cmd == "GETMSG"){
         if (!getline(ss, command.from, ',')) return command;
     } else if (command.cmd == "STATUSREQ") return command;
+    return command;
 }
 
 int sendMessage(command_input &command){ // store a message on the server
@@ -189,12 +193,12 @@ string statusRequest(){
 
 
 bool sendToClient(string c_name, string message){
-
+    return true;
 }
 
 int main(int argc, const char* argv[]){
     if (argc != 2){
-        printf("Usage: chat_server <ip port>");
+        printf("Usage: chat_server <ip port>\n");
         exit(0);
     }
 
@@ -209,8 +213,7 @@ int main(int argc, const char* argv[]){
         perror("Error creating listening socket");
         exit(1);
     }
-    printf("Listening on port: %d\n", port);
-
+    
     if (listen(listening_sock, BACKLOG) < 0){
         printf("Listen failed at %d\n", port);
         close(listening_sock);
@@ -220,12 +223,13 @@ int main(int argc, const char* argv[]){
     // Add listen socket to the list of fds being polled.
     {
         fds.push_back({listening_sock, POLLIN});
+        printf("Listening on port: %d\n", port);
     }
-
-    bool finished = false;
-    while (!finished){
+    
+    //bool finished = false;
+    while (true){
         // Wait for something to read
-        printf("Waiting for data...");
+        printf("Waiting for data...\n");
         int n = poll(fds.data(), fds.size(), -1);
 
         if (n < 0){
@@ -277,7 +281,7 @@ int main(int argc, const char* argv[]){
 
                     if (command.cmd == "SENDMSG"){
                         if (command.from == "" || command.to == "" || command.msg == ""){
-                            printf("Incorrectly formatted command. Usage: SENDMSG,<to>,<from>,<msg>");
+                            printf("Incorrectly formatted command. Usage: SENDMSG,<to>,<from>,<msg>\n");
                             continue;
                         }
                         if (sendMessage(command) < 0){
@@ -286,7 +290,7 @@ int main(int argc, const char* argv[]){
                         }
                     } else if (command.cmd == "GETMSG"){
                         if (command.from == ""){
-                            printf("Incorrectly formatted command. Usage: GETMSG,<from>");
+                            printf("Incorrectly formatted command. Usage: GETMSG,<from>\n");
                             continue;
                         }
                         string gotten_message = getMessage(client->name, command.from);
