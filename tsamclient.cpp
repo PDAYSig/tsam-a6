@@ -178,18 +178,14 @@ bool receiveResponse(int sock, string& response){
 }
 
 string getTimestamp() {
-
     time_t now = time(nullptr);
-
     tm* localTime = localtime(&now);
 
     stringstream ss;
-
-    ss << put_time(localTime, "%Y-%m-%d %H:%M:%S");
+    ss << put_time(localTime, "%d/%m/%Y %H:%M:%S");
 
     return ss.str();
 }
-
 
 bool sendUsername(int sock, string userName){
     if (userName.empty()){
@@ -278,7 +274,7 @@ int main(int argc, char* argv[]){
             continue;
         }
 
-        cout << "[" << getTimestamp() << "] Command: " << command << endl;
+        cout << getTimestamp() << "|  Command: " << command << endl;
 
         
         if (!sendMessage(serversock, command)){
@@ -292,7 +288,7 @@ int main(int argc, char* argv[]){
         }
 
 
-         cout << "[" << getTimestamp() << "] Server response: " << response << endl;
+         cout << getTimestamp() << "|  Server response: " << response << endl;
 
     }
 
