@@ -182,7 +182,7 @@ bool receiveResponse(int sock, string& response){
 }
 
 bool sendUsername(int sock, string userName){
-    if (username.empty()){
+    if (userName.empty()){
         return false;
     }
 
@@ -226,7 +226,7 @@ int main(int argc, char* argv[]){
     //check username
     while (true){
         cout << "Enter username: " << endl;
-        getline(cin, username);
+        getline(cin, userName);
 
         if (sendUsername(serversock, username)){
             break;
