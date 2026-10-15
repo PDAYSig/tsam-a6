@@ -219,7 +219,6 @@ string createFrame(string message){
 bool sendToClient(Client* client, string message){
     printf("we sending it, dw\n");
     string frame = createFrame(message);
-    memcpy(&frame, client->sendbuffer, sizeof(frame));
     int sent = send(client->sock, frame.data(), frame.size(), 0);
     if (sent < 0) return false;
     return true;
@@ -325,6 +324,7 @@ int main(int argc, const char* argv[]){
                     }
                     if (sendMessage(command) < 0){
                         cout << ("Failed to send message to " + (string) command.to);
+                        sendToClient(client, "OK");
                         continue;
                     } //TODO: add server log
                 } else if (command.cmd == "GETMSG"){
@@ -343,7 +343,8 @@ int main(int argc, const char* argv[]){
                 } else if (command.cmd == "USERNAME"){
                     client->name = command.from;
                     cout << client->name << " has logged in" << endl; 
-                }
+                    sendToClient(client, "Welcome");
+                } else sendToClient(client, "INVALID COMMAND");
             }
         }
     }
