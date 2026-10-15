@@ -12,7 +12,7 @@
 #include <poll.h>
 #include <errno.h>
 #include <map>
-#include <chrono>
+#include <fstream>
 #include <algorithm>
 
 
@@ -36,7 +36,15 @@ class Client
 };
 
 
-//TODO: Create server log functionality
+string getTimestamp() {
+    time_t now = time(nullptr);
+    tm* localTime = localtime(&now);
+
+    stringstream ss;
+    ss << put_time(localTime, "%d/%m/%Y %H:%M:%S");
+
+    return ss.str();
+}
 
 
 map<int, Client*> clients; // Lookup table for per Client information
@@ -100,7 +108,6 @@ void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vect
 
               // While there is some client waiting to connect, accept that connection
     int client_sock = accept(listening_sock, (sockaddr*) &client,(socklen_t*) &client_len);
-    printf("Client connected!\n");
     //TODO: if no username, fuck you
     fds.push_back({client_sock, POLLIN, 0});
     Client *new_client = new Client(client_sock);
@@ -110,12 +117,10 @@ void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vect
     
     clients[client_sock] = new_client;
     nfds++;
-
 }
 
 
 void remove_clients(Client* client){
-    printf("Disconnecting client\n");
     int client_socket = client->sock;
     close(client_socket);
 
@@ -183,7 +188,7 @@ string getMessage(string client, string from){
 string statusRequest(){
     printf("STATUSREQ requested\n");
     string message_statuses;
-    int i = 0;
+    int i = 1;
     for (const auto& [name, messages] : UNREAD_MESSAGES){
         int message_len = messages.size();
         if (message_len > 0){
@@ -217,26 +222,31 @@ string createFrame(string message){
 }
 
 bool sendToClient(Client* client, string message){
-    printf("we sending it, dw\n");
     string frame = createFrame(message);
     int sent = send(client->sock, frame.data(), frame.size(), 0);
     if (sent < 0) return false;
     return true;
 }
 
+void writeLog(ofstream& logFile, string message){
+    logFile << "| " << getTimestamp() << " | " << message << endl;
+}
 
 int main(int argc, const char* argv[]){
     if (argc != 2){
         printf("Usage: chat_server <ip port>\n");
         exit(0);
     }
-
+    ofstream logFile("server.log", ios::app);
+    writeLog(logFile,  "Server started");
     int port = stoi(argv[1]);
     struct sockaddr_in client_sock_addr;
     socklen_t client_len;
     int client_sock;                        // Socket of connecting client
 
-    printf("Setting up listening socket...\n");
+    writeLog(logFile, "Setting up listening socket...");
+
+
     int listening_sock = open_socket(port);
     if (listening_sock < 0){
         perror("Error creating listening socket");
@@ -252,13 +262,13 @@ int main(int argc, const char* argv[]){
     // Add listen socket to the list of fds being polled.
     {
         fds.push_back({listening_sock, POLLIN});
-        printf("Listening on port: %d\n", port);
+        writeLog(logFile, "Server listening on port " + port);
     }
     
     //bool finished = false;
     while (true){
         // Wait for something to read
-        printf("Waiting for data...\n");
+        writeLog(logFile, "Server waiting for data");
         int n = poll(fds.data(), fds.size(), -1);
 
         if (n < 0){
@@ -273,9 +283,9 @@ int main(int argc, const char* argv[]){
         if (fds[0].revents & POLLIN){
             client_len = sizeof(client_sock_addr);
             add_clients(listening_sock, client_sock_addr, client_len, fds);
+            writeLog(logFile, "Client connected");
         }
         for(size_t i = 1; i < readyFds.size(); i++){
-            printf("something is afoot\n");
             if(readyFds[i].revents & POLLIN){
                 int client_sock = readyFds[i].fd;
                 Client *client = clients[client_sock];
@@ -284,14 +294,13 @@ int main(int argc, const char* argv[]){
             int recvd;
                 recvd = recv(client_sock, buffer + client->recvd_bytes, sizeof(client->recvbuffer) - client->recvd_bytes, MSG_DONTWAIT);                        
                 // if it's a client disconnectiong, log it and remove from vector
-                //TODO: add to server log
-                printf("We got something\n");
+
                 // in this case we don't have any command to deal with, so we move on to the next fd
                 if (recvd == 0) {
                     remove_clients(client);
+                    writeLog(logFile, "Client disconnected");
                     continue;
                 }
-                printf("its not a disconnect...\n");
                 client->recvd_bytes += recvd;
                 
                 // if we don't have at least 4 bytes, we can't know what the length of the frame should be so we move on
@@ -334,8 +343,11 @@ int main(int argc, const char* argv[]){
                     if (sendMessage(command) < 0){
                         cout << ("Failed to send message to " + (string) command.to);
                         continue;
-                    } //TODO: add server log
+                    }
+                    writeLog(logFile, "Command: SENDMSG. " + client->name + " has sent a message to " + command.to);
                     sendToClient(client, "OK");
+                    writeLog(logFile, "Response sent: 'OK'");
+
                 } else if (command.cmd == "GETMSG"){
                     if (command.from == ""){
                         printf("Incorrectly formatted command. Usage: GETMSG,<from>\n");
@@ -343,18 +355,22 @@ int main(int argc, const char* argv[]){
                     }
                     string gotten_message = getMessage(client->name, command.from);
                     sendToClient(client, gotten_message);
-                    //TODO: add server log
-
+                    writeLog(logFile, "Command: GETMSG. " + client->name + " requested messages from " + command.from);
 
                 } else if (command.cmd == "STATUSREQ"){
                     string status = statusRequest();
                     if (status == "") status = "EMPTY";
                     sendToClient(client, status);
+                    writeLog(logFile, "Command: STATUSREQ. Status requested");
                 } else if (command.cmd == "USERNAME"){
                     client->name = command.from;
-                    cout << client->name << " has logged in" << endl; 
                     sendToClient(client, "Welcome");
-                } else sendToClient(client, "INVALID COMMAND");
+                    writeLog(logFile, "Username Recieved: " + client->name);
+                    writeLog(logFile, client->name + " has logged in!"); 
+                } else {
+                    sendToClient(client, "INVALID COMMAND");
+                    writeLog(logFile, "User entered invalid command");
+                }
 
                     // Remove the processed frame from the buffer
                 size_t remaining = client->recvd_bytes - frame_len;
