@@ -201,6 +201,52 @@ int sendUsername(int sock, string userName){
 
 
 
+
+bool validCommand(string command) {
+
+    stringstream ss(command);
+    string cmd, from, to, message;
+
+    getline(ss, cmd, ',');
+
+    if (cmd == "SENDMSG") {
+
+        if (!getline(ss, from, ',') || from.empty()) {
+            return false;
+        }
+
+        if (!getline(ss, to, ',') || to.empty()) {
+            return false;
+        }
+
+        if (!getline(ss, message) || message.empty()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    else if (cmd == "GETMSG") {
+
+        if (!getline(ss, from) || from.empty()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    else if (cmd == "STATUSREQ") {
+        return command == "STATUSREQ";
+    }
+
+    return false;
+}
+
+
+
+
+
+
 int main(int argc, char* argv[]){
     if (argc != 3){
         printf("Usage: chat_client <ip  port>\n");
@@ -248,7 +294,7 @@ int main(int argc, char* argv[]){
             cout << "Invalid Username" << endl;
         }
         else{
-            cout << "Connecton to server lost" << endl;
+            cout << "Failed to send username" << endl;
             close(serversock);
             return 1;
         }
@@ -264,9 +310,15 @@ int main(int argc, char* argv[]){
             break;
         }
 
+        
         if (command == "Q"){
             break;    
         }
+        if (!validCommand(command)) {
+            cout << "Incorrect command format" << endl;
+            continue;
+        }
+
         if (command.empty()){
             continue;
         }
