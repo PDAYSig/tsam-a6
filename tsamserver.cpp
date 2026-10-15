@@ -26,13 +26,15 @@ class Client
     public:
     int sock;
     string name;
+    unsigned char recvbuffer[5000];
+    unsigned char sendbuffer[5000];
 
     Client(int socket) : sock(socket){};
     ~Client(){};
 };
 
 
-vector<string> server_logs;
+//TODO: Create server log functionality
 
 
 map<int, Client*> clients; // Lookup table for per Client information
@@ -58,6 +60,7 @@ struct unread_message{
 
 
 map<string,vector<unread_message>* > UNREAD_MESSAGES;
+
 
 int nfds = 1;
 int open_socket(int port){
@@ -155,19 +158,39 @@ int sendMessage(command_input &command){ // store a message on the server
 }
 
 
-vector<string> getMessage(string client, string from){
+string getMessage(string client, string from){
     /* Returns a list of unread messages from */
     vector<string> client_messages;
-    if (UNREAD_MESSAGES.count(client) == 0) return client_messages;
+    string client_message;
+    if (UNREAD_MESSAGES.count(client) == 0) return "EMPTY";
     vector<unread_message> client_message_vector = *UNREAD_MESSAGES[client];
     for (int i = 0; i < client_message_vector.size(); i++){
-        if (client_message_vector[i].from == from) client_messages.push_back(client_message_vector[i].message);
+        if (client_message_vector[i].from == from){
+            client_message = client_message_vector[i].message;
+            client_messages.pop_back();}
     }
-    return client_messages;
+    return client_message;
 }
 
 
-int statusRequest(){}
+string statusRequest(){
+    string message_statuses;
+    int i = 0;
+    for (const auto& [name, messages] : UNREAD_MESSAGES){
+        int message_len = messages->size();
+        if (message_len > 0){
+            message_statuses += (name + ":" + to_string(message_len));
+            i++;
+            if (i != 1) message_statuses += ",";
+        }
+    }
+    return message_statuses;
+}
+
+
+bool sendToClient(string c_name, string message){
+
+}
 
 int main(int argc, const char* argv[]){
     if (argc != 2){
@@ -176,9 +199,8 @@ int main(int argc, const char* argv[]){
     }
 
     int port = stoi(argv[1]);
-    struct sockaddr_in client;
+    struct sockaddr_in client_sock_addr;
     socklen_t client_len;
-    unsigned char buffer[5000];             // Buffer to read from clients
     int client_sock;                        // Socket of connecting client
 
     printf("Setting up listening socket...\n");
@@ -202,9 +224,6 @@ int main(int argc, const char* argv[]){
 
     bool finished = false;
     while (!finished){
-        // Reset the buffer
-        memset(buffer, 0, sizeof(buffer));
-
         // Wait for something to read
         printf("Waiting for data...");
         int n = poll(fds.data(), fds.size(), -1);
@@ -214,24 +233,31 @@ int main(int argc, const char* argv[]){
             close(listening_sock);
             exit(1);
         }
-        else{
+        else
+        {
             vector<struct pollfd> readyFds = fds;
 
             // Check if the listening socket has new readable data
             if (fds[0].revents & POLLIN){
-                client_len = sizeof(client);
-                add_clients(listening_sock, client, client_len, fds);
+                client_len = sizeof(client_sock_addr);
+                add_clients(listening_sock, client_sock_addr, client_len, fds);
             }
             for(size_t i = 1; i < readyFds.size(); i++){
                 if(readyFds[i].revents & POLLIN){
                     int client_sock = readyFds[i].fd;
                     Client *client = clients[client_sock];
+                    unsigned char *buffer = client->recvbuffer;
                 // Keep recieving until there is nothing more to recieve
-                    int recvd;
-                    recvd = recv(listening_sock, buffer, sizeof(buffer), MSG_DONTWAIT);
-                    
-                    // if it's a client disconnectiong, log it and remove from vector
-                    if (recvd == 0) remove_clients(client);
+                int recvd;
+                    while (true){
+                        recvd = recv(listening_sock, buffer, sizeof(client->recvbuffer), MSG_DONTWAIT);                        
+                        // if it's a client disconnectiong, log it and remove from vector
+                        //TODO: add to server log
+                        if (recvd == 0) remove_clients(client); break;
+
+                        
+
+                    }
 
                     buffer[recvd] = '\0';
 
@@ -256,16 +282,23 @@ int main(int argc, const char* argv[]){
                         }
                         if (sendMessage(command) < 0){
                             cout << ("Failed to send message to " + (string) command.to);
+                            continue;
                         }
                     } else if (command.cmd == "GETMSG"){
                         if (command.from == ""){
                             printf("Incorrectly formatted command. Usage: GETMSG,<from>");
                             continue;
                         }
-                        vector<string> gotten_messages = getMessage(client->name, command.from);
+                        string gotten_message = getMessage(client->name, command.from);
+                        sendToClient(client->name, gotten_message);
 
-                        
+                        // send message back to client
+                    } else if (command.cmd == "STATUSREQ"){
+                        string status = statusRequest();
+                        sendToClient(client->name, status);
                     }
+                    
+
                 }
             }
         }
