@@ -1,25 +1,17 @@
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <string>
+#include <cstdint>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
 #include <arpa/inet.h>
-#include <string.h>
-#include <algorithm>
-#include <map>
-#include <vector>
-#include <poll.h>
-#include <string>
-#include <cstdint>
-
-
-#include <iostream>
-#include <sstream>
+#include <unistd.h>
+#include <cstring>
+#include <cerrno>
+#include <cstdio>
 
 using namespace std;
 
@@ -127,7 +119,11 @@ bool receiveResponse(int sock, string& response){
         if (received < 0 && errno == EINTR){
             continue;
         }
-        if (received <= 0){
+        if (received == 0){
+            cout << "Server disconnected" << endl;
+            return false;
+        }
+        if (received < 0){
             perror("Error receiving");
             return false;
         }
@@ -181,6 +177,20 @@ bool receiveResponse(int sock, string& response){
 
 }
 
+string getTimestamp() {
+
+    time_t now = time(nullptr);
+
+    tm* localTime = localtime(&now);
+
+    stringstream ss;
+
+    ss << put_time(localTime, "%Y-%m-%d %H:%M:%S");
+
+    return ss.str();
+}
+
+
 bool sendUsername(int sock, string userName){
     if (userName.empty()){
         return false;
@@ -211,7 +221,20 @@ int main(int argc, char* argv[]){
         return 1;
     }
     string ip = argv[1];
-    int port = stoi(argv[2]);
+    int port;
+    try {
+        port = stoi(argv[2]);   
+    }
+    catch(...){
+        cerr << "Invalid port" << endl;
+        return 1;
+    }
+
+    if (port < 1|| port > 65535){
+        cerr << "Port has to be from 1 to 65535" << endl;
+        return 1;
+    }
+
 
 
     int serversock = connectToServer(ip, port);
@@ -220,22 +243,26 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    string command;
-    string response;
     
+    string userName;
     //check username
     while (true){
         cout << "Enter username: " << endl;
-        getline(cin, userName);
-
-        if (sendUsername(serversock, username)){
+        if (!getline(cin, userName)){
+            close(serversock);
+            return 0;
+        }
+        
+        if (sendUsername(serversock, userName)){
             break;
         }
         else{
             cout << "Invalid username" << endl;
         }
     }
-
+    
+    string command;
+    string response;
     while (true){
         cout << "Enter command (Q to quit): " << endl;
 
@@ -251,7 +278,8 @@ int main(int argc, char* argv[]){
             continue;
         }
 
-        cout << "Command: " << command << endl;
+        cout << "[" << getTimestamp() << "] Command: " << command << endl;
+
         
         if (!sendMessage(serversock, command)){
             cout << "Error sending message" << endl;
@@ -263,7 +291,9 @@ int main(int argc, char* argv[]){
             break;
         }
 
-        cout << "Server response: " << response << endl;
+
+         cout << "[" << getTimestamp() << "] Server response: " << response << endl;
+
     }
 
     close(serversock);
