@@ -29,6 +29,7 @@ class Client
     string name;
     unsigned char recvbuffer[5000];
     unsigned char sendbuffer[5000];
+    int recvd_bytes;
 
     Client(int socket) : sock(socket){};
     ~Client(){};
@@ -96,7 +97,7 @@ int open_socket(int port){
 
 void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vector<struct pollfd>& fds){ //map<int, Client*>* clients
     printf("Client connected!\n");
-   
+
     while (true){               // While there is some client waiting to connect, accept that connection
         int client_sock = accept(listening_sock, (sockaddr*) &client,(socklen_t*) &client_len);
         if (client_sock < 0){
@@ -109,6 +110,10 @@ void add_clients(int listening_sock, sockaddr_in client, size_t client_len, vect
         //TODO: if no username, fuck you
         fds.push_back({client_sock, POLLIN, 0});
         Client new_client = Client(client_sock);
+        new_client.recvd_bytes = 0;
+        memset(new_client.recvbuffer, 0, sizeof(new_client.recvbuffer));
+        memset(new_client.sendbuffer, 0, sizeof(new_client.sendbuffer));
+        
         clients[client_sock] = &new_client;
         nfds++;
     }
@@ -147,6 +152,7 @@ command_input extract_command(char* message){
     } else if (command.cmd == "STATUSREQ") return command;
     return command;
 }
+
 
 int sendMessage(command_input &command){ // store a message on the server
     unread_message new_message;
@@ -191,10 +197,35 @@ string statusRequest(){
     return message_statuses;
 }
 
+string createFrame(string message){
 
-bool sendToClient(string c_name, string message){
+    //Create the frame that we edit and then return
+    string frame = "";
+
+    uint16_t length = message.size() + 5; // add 5 because of SOH,length(2bytes),STX and ETX
+
+    frame += (char)0x01; //SOH
+
+    frame += (char)(length >> 8); //Get the first byte
+    frame += (char)(length & 0xFF); //Get the second byte
+
+    frame += (char)0x02; //STX
+
+    frame += message; //Add the message
+
+    frame += (char)0x03; //ETX
+
+    return frame;
+}
+
+bool sendToClient(Client* client, string message){
+    string frame = createFrame(message);
+    memcpy(&frame, client->sendbuffer, sizeof(frame));
+    int sent = send(client->sock, client->sendbuffer, sizeof(client->sendbuffer), 0);
+    if (sent < 0) return false;
     return true;
 }
+
 
 int main(int argc, const char* argv[]){
     if (argc != 2){
@@ -213,7 +244,7 @@ int main(int argc, const char* argv[]){
         perror("Error creating listening socket");
         exit(1);
     }
-    
+
     if (listen(listening_sock, BACKLOG) < 0){
         printf("Listen failed at %d\n", port);
         close(listening_sock);
@@ -237,72 +268,73 @@ int main(int argc, const char* argv[]){
             close(listening_sock);
             exit(1);
         }
-        else
-        {
-            vector<struct pollfd> readyFds = fds;
 
-            // Check if the listening socket has new readable data
-            if (fds[0].revents & POLLIN){
-                client_len = sizeof(client_sock_addr);
-                add_clients(listening_sock, client_sock_addr, client_len, fds);
-            }
-            for(size_t i = 1; i < readyFds.size(); i++){
-                if(readyFds[i].revents & POLLIN){
-                    int client_sock = readyFds[i].fd;
-                    Client *client = clients[client_sock];
-                    unsigned char *buffer = client->recvbuffer;
-                // Keep recieving until there is nothing more to recieve
-                int recvd;
-                    while (true){
-                        recvd = recv(listening_sock, buffer, sizeof(client->recvbuffer), MSG_DONTWAIT);                        
-                        // if it's a client disconnectiong, log it and remove from vector
-                        //TODO: add to server log
-                        if (recvd == 0) remove_clients(client); break;
+        vector<struct pollfd> readyFds = fds;
 
-                        
+        // Check if the listening socket has new readable data
+        if (fds[0].revents & POLLIN){
+            client_len = sizeof(client_sock_addr);
+            add_clients(listening_sock, client_sock_addr, client_len, fds);
+        }
+        for(size_t i = 1; i < readyFds.size(); i++){
+            if(readyFds[i].revents & POLLIN){
+                int client_sock = readyFds[i].fd;
+                Client *client = clients[client_sock];
+                unsigned char *buffer = client->recvbuffer;
+            // Keep recieving until there is nothing more to recieve
+            int recvd;
+                recvd = recv(listening_sock, buffer + client->recvd_bytes, sizeof(client->recvbuffer), MSG_DONTWAIT);                        
+                // if it's a client disconnectiong, log it and remove from vector
+                //TODO: add to server log
 
+                // in this case we don't have any command to deal with, so we move on to the next fd
+                if (recvd == 0) remove_clients(client); continue;
+
+                client->recvd_bytes += recvd;
+                
+                // if we don't have at least 4 bytes, we can't know what the length of the frame should be so we move on
+                if (client->recvd_bytes < 4) continue;
+                
+                // Extract the length
+                uint16_t length;
+                memset(&length, 0, sizeof(length));
+                memcpy(&length, buffer + 8, sizeof(u_int16_t));
+
+
+                // Unless the frame is whole, we can´t go any further
+                if (client->recvd_bytes < ntohs(length)) continue;
+
+
+                /* ------ Command handling ------ */
+                int command_byte_len = ntohs(length) - 40;
+                
+                unsigned char message[command_byte_len];
+                memcpy(message, buffer + 32, (size_t)(command_byte_len));
+
+                command_input command = extract_command((char*)message);
+
+                if (command.cmd == "SENDMSG"){
+                    if (command.from == "" || command.to == "" || command.msg == ""){
+                        printf("Incorrectly formatted command. Usage: SENDMSG,<to>,<from>,<msg>\n");
+                        continue;
                     }
-
-                    buffer[recvd] = '\0';
-
-                    // Check the command
-                    uint16_t length;
-                    memset(&length, 0, sizeof(length));
-
-                    memcpy(&length, buffer + 8, sizeof(u_int16_t));
-
-                    int command_byte_len = ntohs(length) - 40;
-
-
-                    unsigned char message[command_byte_len];
-                    memcpy(message, buffer + 32, (size_t)(command_byte_len));
-
-                    command_input command = extract_command((char*)message);
-
-                    if (command.cmd == "SENDMSG"){
-                        if (command.from == "" || command.to == "" || command.msg == ""){
-                            printf("Incorrectly formatted command. Usage: SENDMSG,<to>,<from>,<msg>\n");
-                            continue;
-                        }
-                        if (sendMessage(command) < 0){
-                            cout << ("Failed to send message to " + (string) command.to);
-                            continue;
-                        }
-                    } else if (command.cmd == "GETMSG"){
-                        if (command.from == ""){
-                            printf("Incorrectly formatted command. Usage: GETMSG,<from>\n");
-                            continue;
-                        }
-                        string gotten_message = getMessage(client->name, command.from);
-                        sendToClient(client->name, gotten_message);
-
-                        // send message back to client
-                    } else if (command.cmd == "STATUSREQ"){
-                        string status = statusRequest();
-                        sendToClient(client->name, status);
+                    if (sendMessage(command) < 0){
+                        cout << ("Failed to send message to " + (string) command.to);
+                        continue;
+                    } //TODO: add server log
+                } else if (command.cmd == "GETMSG"){
+                    if (command.from == ""){
+                        printf("Incorrectly formatted command. Usage: GETMSG,<from>\n");
+                        continue;
                     }
-                    
+                    string gotten_message = getMessage(client->name, command.from);
+                    sendToClient(client, gotten_message);
+                    //TODO: add server log
 
+
+                } else if (command.cmd == "STATUSREQ"){
+                    string status = statusRequest();
+                    sendToClient(client, status);
                 }
             }
         }
