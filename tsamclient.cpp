@@ -195,17 +195,8 @@ int sendUsername(int sock, string userName){
     if(!sendMessage(sock, "USERNAME," + userName)){
         return -1;
     }
-    
-    string response;
 
-    if (!receiveResponse(sock, response)){
-        return -1;
-    }
-    if (response == "OK"){
-        return 1;
-    }
-
-    return 0;
+    return 1;
 }
 
 
