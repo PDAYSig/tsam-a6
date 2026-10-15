@@ -79,6 +79,8 @@ string createFrame(string message){
     return frame;
 }
 
+
+
 bool sendMessage(int sock, string message){
     
     if (message.size() > 4995){
@@ -179,6 +181,29 @@ bool receiveResponse(int sock, string& response){
 
 }
 
+bool sendUsername(int sock, string userName){
+    if (username.empty()){
+        return false;
+    }
+
+    if(!sendMessage(sock, "USERNAME," + userName)){
+        return false;
+    }
+    
+    string response;
+
+    if (!receiveResponse(sock, response)){
+        return false;
+    }
+    if (response == "OK"){
+        return true;
+    }
+
+    return false;
+}
+
+
+
 int main(int argc, char* argv[]){
     if (argc != 3){
         printf("Usage: chat_client <ip  port>\n");
@@ -197,6 +222,19 @@ int main(int argc, char* argv[]){
 
     string command;
     string response;
+    
+    //check username
+    while (true){
+        cout << "Enter username: " << endl;
+        getline(cin, username);
+
+        if (sendUsername(serversock, username)){
+            break;
+        }
+        else{
+            cout << "Invalid username" << endl;
+        }
+    }
 
     while (true){
         cout << "Enter command (Q to quit): " << endl;
@@ -212,6 +250,9 @@ int main(int argc, char* argv[]){
         if (command.empty()){
             continue;
         }
+
+        cout << "Command: " << command << endl;
+        
         if (!sendMessage(serversock, command)){
             cout << "Error sending message" << endl;
             break;
