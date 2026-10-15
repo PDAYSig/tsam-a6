@@ -143,7 +143,7 @@ The server records activity in `server.log`
 To display client output and save it to `client-output.txt` at the same time, run:
 
 ```bash
-./tsamclient 127.0.0.1 4044 2>&1 | tee client-output.txt
+./tsamclient 127.0.0.1 4044 | tee client-output.txt
 ```
 
 The client displays timestamps for commands and server responses.
