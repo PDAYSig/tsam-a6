@@ -303,6 +303,14 @@ int main(int argc, char* argv[]){
     
     string command;
     string response;
+    if (!receiveResponse(serversock, response)){
+            cout << "Error receiving response" << endl;
+            break;
+        }
+    cout << getTimestamp() << "|  Server response: " << response << endl;
+
+    
+
     while (true){
         cout << "Enter command (Q to quit): " << endl;
 
