@@ -3,7 +3,7 @@
 
 ## Description
 
-This project implements a TCP mail server and client in C++ using POSIX sockets.
+This project implements a TCP mail server and client in C++.
 
 The server supports multiple clients using `poll()`. Clients can send messages to other users, retrieve unread messages, and request the number of stored messages.
 
@@ -31,8 +31,8 @@ make
 Alternatively, compile them manually:
 
 ```bash
-g++ -std=c++17 tsamserver.cpp -o tsamserver
-g++ -std=c++17 tsamclient.cpp -o tsamclient
+g++ tsamserver.cpp -o tsamserver
+g++ tsamclient.cpp -o tsamclient
 ```
 
 ## Running the Programs
@@ -133,40 +133,10 @@ SOH | Length (2 bytes) | STX | Message | ETX
 
 The maximum frame size is **5000 bytes**, including the header and control bytes.
 
-The client handles partial TCP sends and receives to ensure complete frames are transmitted.
 
 ## Logging
 
-The server records activity in `server.log`, including:
-
-- Server startup and shutdown
-- Client connections and disconnections
-- Received commands
-- Sent responses
-- Message operations
-- Connection and protocol errors
-
-Log entries include timestamps in the format:
-
-```text
-DD/MM/YYYY HH:MM:SS
-```
-
-**Example:**
-
-```text
-15/10/2026 23:10:00 | Server started
-15/10/2026 23:10:05 | Client connected
-15/10/2026 23:10:15 | Command received: STATUSREQ
-15/10/2026 23:10:15 | Response sent: Bob:1
-15/10/2026 23:10:30 | Client disconnected
-```
-
-To view the server log:
-
-```bash
-cat server.log
-```
+The server records activity in `server.log`
 
 ### Saving Client Output
 
@@ -192,8 +162,6 @@ To stop the server, press `Ctrl+C` in the server terminal.
 
 - **Language:** C++
 - **Transport protocol:** TCP
-- **Networking:** POSIX sockets
 - **Multiple clients:** `poll()`
 - **Message framing:** SOH, length, STX, payload, ETX
-- **Message storage:** Server-side unread message storage
 - **Platform:** Linux / Ubuntu (WSL)
