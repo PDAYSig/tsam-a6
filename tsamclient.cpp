@@ -107,6 +107,7 @@ bool sendMessage(int sock, string message){
 
 bool receiveResponse(int sock, string& response){
 
+    response.clear();
     char header[4]; //SOH,length1,length2,STX
 
     int totalReceived = 0;
