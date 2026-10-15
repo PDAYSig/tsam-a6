@@ -61,7 +61,7 @@ struct unread_message{
 };
 
 
-map<string,vector<unread_message>* > UNREAD_MESSAGES;
+map<string,vector<unread_message> > UNREAD_MESSAGES;
 
 
 int nfds = 1;
@@ -156,10 +156,10 @@ int sendMessage(command_input &command){ // store a message on the server
     new_message.message = command.msg;
     new_message.from = command.from;
     if (UNREAD_MESSAGES.count(command.to) > 0){
-        UNREAD_MESSAGES[command.to]->push_back(new_message);
+        UNREAD_MESSAGES[command.to].push_back(new_message);
     } else {
         vector<unread_message> entry = {new_message};
-        UNREAD_MESSAGES[command.to] = &entry;
+        UNREAD_MESSAGES[command.to] = entry;
     } printf("MESSAGE SENT\n");
     return 0;
 }
@@ -170,7 +170,7 @@ string getMessage(string client, string from){
     vector<string> client_messages;
     string client_message;
     if (UNREAD_MESSAGES.count(client) == 0) return "EMPTY";
-    vector<unread_message> client_message_vector = *UNREAD_MESSAGES[client];
+    vector<unread_message> client_message_vector = UNREAD_MESSAGES[client];
     for (int i = 0; i < client_message_vector.size(); i++){
         if (client_message_vector[i].from == from){
             client_message = client_message_vector[i].message;
@@ -185,7 +185,7 @@ string statusRequest(){
     string message_statuses;
     int i = 0;
     for (const auto& [name, messages] : UNREAD_MESSAGES){
-        int message_len = messages->size();
+        int message_len = messages.size();
         if (message_len > 0){
             message_statuses += (name + ":" + to_string(message_len));
             i++;
@@ -282,7 +282,7 @@ int main(int argc, const char* argv[]){
                 unsigned char *buffer = client->recvbuffer;
             // Keep recieving until there is nothing more to recieve
             int recvd;
-                recvd = recv(client_sock, buffer + client->recvd_bytes, sizeof(client->recvbuffer), MSG_DONTWAIT);                        
+                recvd = recv(client_sock, buffer + client->recvd_bytes, sizeof(client->recvbuffer) - client->recvd_bytes, MSG_DONTWAIT);                        
                 // if it's a client disconnectiong, log it and remove from vector
                 //TODO: add to server log
                 printf("We got something\n");
