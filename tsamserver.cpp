@@ -166,15 +166,15 @@ int sendMessage(command_input &command){ // store a message on the server
 
 
 string getMessage(string client, string from){
-    /* Returns a list of unread messages from */
-    vector<string> client_messages;
-    string client_message;
+    /* Returns the most recent unread messages from a specified client */
     if (UNREAD_MESSAGES.count(client) == 0) return "EMPTY";
-    vector<unread_message> client_message_vector = UNREAD_MESSAGES[client];
+    string client_message;
+    vector<unread_message>& client_message_vector = UNREAD_MESSAGES[client];
     for (int i = 0; i < client_message_vector.size(); i++){
         if (client_message_vector[i].from == from){
             client_message = client_message_vector[i].message;
-            client_messages.pop_back();}
+            client_message_vector.erase(client_message_vector.begin() + i);
+        }
     }
     return client_message;
 }
@@ -296,27 +296,36 @@ int main(int argc, const char* argv[]){
                 
                 // if we don't have at least 4 bytes, we can't know what the length of the frame should be so we move on
                 if (client->recvd_bytes < 4) continue;
+
+                while (client->recvd_bytes >= 4) {
+                    // Extract frame length
+                    uint16_t length;
+                    memcpy(&length, buffer + 1, sizeof(length));
+
+                    size_t frame_len = ntohs(length);
+
+                    // Validate frame length
+                    if (frame_len < 5 || frame_len > sizeof(client->recvbuffer)) {
+                        // Handle invalid frame, e.g. disconnect client
+                        break;
+                    }
+
+                    // Not enough bytes for the complete frame yet
+                    if (client->recvd_bytes < frame_len) {
+                        break;
+                    }
+
+                    // Extract command
+                    size_t command_byte_len = frame_len - 5;
+
+                    vector<unsigned char> message(command_byte_len + 1);
+
+                    memcpy(message.data(), buffer + 4, command_byte_len);
+                    message[command_byte_len] = '\0';
+
+                    command_input command = extract_command((char*)message.data());
                 
-                // Extract the length
-                uint16_t length;
-                memset(&length, 0, sizeof(length));
-                memcpy(&length, buffer + 1, sizeof(u_int16_t));
-
-                size_t frame_len = ntohs(length);
-                // Unless the frame is whole, we can´t go any further
-                if (client->recvd_bytes < frame_len) continue;
-
-
-                /* ------ Command handling ------ */
-                printf("HOLY SHIT WE GOT IT, WE PROCESSING NOW\n");
-                int command_byte_len = frame_len - 5;
-                
-                vector <unsigned char> message(command_byte_len + 1);             // account for null terminator
-                memcpy(message.data(), buffer + 4, (size_t)(command_byte_len));
-                message[command_byte_len] = '\0';
-
-                command_input command = extract_command((char*)message.data());
-
+                    
                 if (command.cmd == "SENDMSG"){
                     if (command.from == "" || command.to == "" || command.msg == ""){
                         printf("Incorrectly formatted command. Usage: SENDMSG,<from>,<to>,<msg>\n");
@@ -324,9 +333,9 @@ int main(int argc, const char* argv[]){
                     }
                     if (sendMessage(command) < 0){
                         cout << ("Failed to send message to " + (string) command.to);
-                        sendToClient(client, "OK");
                         continue;
                     } //TODO: add server log
+                    sendToClient(client, "OK");
                 } else if (command.cmd == "GETMSG"){
                     if (command.from == ""){
                         printf("Incorrectly formatted command. Usage: GETMSG,<from>\n");
@@ -339,14 +348,23 @@ int main(int argc, const char* argv[]){
 
                 } else if (command.cmd == "STATUSREQ"){
                     string status = statusRequest();
+                    if (status == "") status = "EMPTY";
                     sendToClient(client, status);
                 } else if (command.cmd == "USERNAME"){
                     client->name = command.from;
                     cout << client->name << " has logged in" << endl; 
                     sendToClient(client, "Welcome");
                 } else sendToClient(client, "INVALID COMMAND");
+
+                    // Remove the processed frame from the buffer
+                size_t remaining = client->recvd_bytes - frame_len;
+
+                memmove(buffer, buffer + frame_len, remaining);
+
+                client->recvd_bytes = remaining;
             }
         }
     }
+}
 }
 
